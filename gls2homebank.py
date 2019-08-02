@@ -1,4 +1,4 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
 
 import argparse
 import csv
@@ -14,28 +14,19 @@ class gls(csv.Dialect):
 
 csv.register_dialect("gls", gls)
 
-glsFieldNames = ["kontonummer",
-                  "buchungstag",
-                  "wertstellung",
-                  "beguenstigter",
-                  "buchungstext",
-                  "verwendungszweck1",
-                  "verwendungszweck2",
-                  "verwendungszweck3",
-                  "verwendungszweck4",
-                  "verwendungszweck5",
-                  "verwendungszweck6",
-                  "verwendungszweck7",
-                  "verwendungszweck8",
-                  "verwendungszweck9",
-                  "verwendungszweck10",
-                  "verwendungszweck11",
-                  "verwendungszweck12",
-                  "verwendungszweck13",
-                  "verwendungszweck14",
-                  "betrag",
-                  "kontostand",
-                  "waehrung"]
+glsFieldNames = ["buchungstag",
+                 "wertstellung",
+                 "in-name",
+                 "payee",
+                 "kontonummer",
+                 "IBAN",
+                 "BLZ",
+                 "BIC",
+                 "verwendungszweck",
+                 "kundenreferenz",
+                 "waehrung",
+                 "betrag", # TODO nun ohne minus und plus soll-haben stattdessen!
+                 "soll-haben",]
 
 homebankFieldNames = ["date",
                       "paymode",
@@ -48,7 +39,7 @@ homebankFieldNames = ["date",
 
 
 def convertGlsGiro(filename):
-    with open(filename, 'r') as csvfile:
+    with open(filename, 'r', encoding='iso-8859-1') as csvfile:
         dialect = csv.Sniffer().sniff(csvfile.read(1024))
         csvfile.seek(0)
         reader = csv.DictReader(transactionLines(csvfile), dialect=dialect, fieldnames=glsFieldNames)
@@ -56,14 +47,16 @@ def convertGlsGiro(filename):
         with open("glsHomebank.csv", 'w') as outfile:
             writer = csv.DictWriter(outfile, dialect='gls', fieldnames=homebankFieldNames)
             for row in reader:
+                # "betrag" should be a negative value if "soll-haben" is "S"
+                if row["soll-haben"] == "S":
+                    row["betrag"] = "-"+row["betrag"]
                 writer.writerow(
                     {
                     'date': convertDate(row["buchungstag"]),
                     'paymode': 8,
                     'info': None,
-                    'payee': row["beguenstigter"],
-                    'memo':
-                    row["verwendungszweck1"]+row["verwendungszweck2"]+row["verwendungszweck3"],
+                    'payee': row["payee"],
+                    'memo': row["verwendungszweck"].replace('\n', ' ').replace('\r', ''),
                     'amount': row["betrag"],
                     'category': None,
                     'tags': None
@@ -73,13 +66,14 @@ def transactionLines(file):
     lines = file.readlines()
     i = 1
     for line in lines:
-        if "Betrag" in line:
-            return lines[i:]
+        # Last line of header found
+        if "Valuta" in line:
+            return lines[i:-2] # delete last lines with "Anfangssaldo" etc. (I hope this is stable)
         i = i + 1
 
 def convertDate(dateString):
     date = datetime.strptime(dateString, "%d.%m.%Y")
-    return date.strftime('%d-%m-%Y')
+    return date.strftime('%m-%d-%Y')
 
 def main():
     parser = argparse.ArgumentParser(description="Convert a CSV export file from Germain GLS online banking to a Homebank compatible CSV format.")
